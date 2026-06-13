@@ -1,10 +1,34 @@
 {
   "latest": "4.8.6.2",
   "versions": {
+    "4.3.1.0": {
+      "x86_64-linux": {
+        "hash": "sha256-S/qmpbTo9f42mjhliqziM7mOMhTztvOdSCzNc9noR+o=",
+        "url": "https://web.archive.org/web/20260204085545if_/https://dl.todesk.com/linux/todesk-v4.3.1.0-amd64.deb"
+      }
+    },
+    "4.7.2.0": {
+      "x86_64-linux": {
+        "hash": "sha256-v7VpXXFVaKI99RpzUWfAc6eE7NHGJeFrNeUTbVuX+yg=",
+        "url": "https://web.archive.org/web/20260329112441if_/https://dl.todesk.com/linux/todesk-v4.7.2.0-amd64.deb"
+      }
+    },
+    "4.8.1.0": {
+      "x86_64-linux": {
+        "hash": "sha256-qLxI7W+7sM8hYvr2zr0wLmq4aXY2OdJG6rs5k0P0FYY=",
+        "url": "https://web.archive.org/web/20260329112452if_/https://dl.todesk.com/linux/todesk-v4.8.1.0-amd64.deb"
+      }
+    },
+    "4.8.5.1": {
+      "x86_64-linux": {
+        "hash": "sha256-PPxRv2rQTtqXLNVQOb3iVL4K/o9ycUDSHx4PDDcdTa0=",
+        "url": "https://web.archive.org/web/20260305112056if_/https://dl.todesk.com/linux/todesk-v4.8.5.1-amd64.deb"
+      }
+    },
     "4.8.6.2": {
       "x86_64-linux": {
-        "url": "https://web.archive.org/web/20260413043514if_/https://dl.todesk.com/linux/todesk-v4.8.6.2-x86_64.rpm",
-        "hash": "sha256-NqlFgRUIVkmPKIhl0K3VOxdEPi8AMIIJchM2foXTTwg="
+        "hash": "sha256-s/Kvf8EglIkD3zqkVZVctYI/tcH17H3KF6yKTLpTyAg=",
+        "url": "https://web.archive.org/web/20260329112316if_/https://dl.todesk.com/linux/todesk-v4.8.6.2-amd64.deb"
       }
     }
   }

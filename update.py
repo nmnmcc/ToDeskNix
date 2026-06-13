@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Scrape todesk.com/linux.html and update versions.json with new RPM versions and SRI hashes."""
+"""Scrape todesk.com/linux.html and archive.org CDX API to update versions.json."""
 
 import base64
 import hashlib
 import json
 import re
 import sys
-import time
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -14,10 +13,16 @@ ROOT = Path(__file__).parent
 VERSIONS_FILE = ROOT / "versions.json"
 
 TODESK_PAGE = "https://www.todesk.com/linux.html"
+CDX_API = "https://web.archive.org/cdx/search/cdx"
 ARCHIVE_SAVE = "https://web.archive.org/save/"
-ARCHIVE_CHECK = "https://web.archive.org/web/2/{url}"
-RPM_URL_PATTERN = re.compile(
-    r"https://dl\.todesk\.com/linux/todesk-v([\d.]+)-x86_64\.rpm"
+
+MIN_FILE_SIZE = 5_000_000
+
+DEB_URL_RE = re.compile(
+    r"https://dl\.todesk\.com/linux/todesk-v([\d.]+)-amd64\.deb"
+)
+ARCHIVE_VER_RE = re.compile(
+    r"todesk-v([\d.]+)-amd64\.deb"
 )
 
 
@@ -40,66 +45,89 @@ def version_tuple(v):
     return tuple(int(x) for x in v.split("."))
 
 
-def discover_version():
-    """Fetch the ToDesk Linux page and extract the x86_64 RPM version."""
+def discover_from_page():
+    """Scrape the ToDesk page for the current version (may fail due to JS rendering)."""
     print("Fetching todesk.com/linux.html ...")
     body = fetch(TODESK_PAGE)
     if body is None:
-        print("Failed to fetch ToDesk page", file=sys.stderr)
-        sys.exit(1)
+        return []
     text = body.decode(errors="replace")
-    matches = RPM_URL_PATTERN.findall(text)
-    if not matches:
-        print(
-            "No RPM URL found on the page. The page may use JS rendering.",
-            file=sys.stderr,
-        )
-        print("Try providing the version manually: python update.py <version>")
-        sys.exit(1)
-    versions = sorted(set(matches), key=version_tuple, reverse=True)
-    print(f"  found versions: {', '.join(versions)}")
+    deb = DEB_URL_RE.findall(text)
+    versions = sorted(set(deb), key=version_tuple, reverse=True)
+    if versions:
+        print(f"  found on page: {', '.join(versions)}")
+    else:
+        print("  page uses JS rendering, no versions found directly")
     return versions
 
 
-def archive_url_for(version):
-    """Check if the RPM is on archive.org, or request archival."""
-    original = f"https://dl.todesk.com/linux/todesk-v{version}-x86_64.rpm"
-    check = ARCHIVE_CHECK.format(url=original)
-    print(f"  checking archive.org for v{version} ...")
-    try:
-        req = Request(check, headers={"User-Agent": "todesk-nix-updater"})
-        with urlopen(req, timeout=30) as r:
-            final_url = r.url
-            content_length = r.headers.get("Content-Length", "0")
-            if int(content_length) > 1_000_000:
-                return final_url.replace("/web/", "/web/").replace("http://", "https://")
-    except Exception:
-        pass
+def discover_from_cdx():
+    """Query Wayback Machine CDX API for all archived ToDesk Linux packages."""
+    print("Querying archive.org CDX API ...")
+    results = {}
 
-    print(f"  not found on archive.org, requesting archival ...")
-    save_url = ARCHIVE_SAVE + original
-    try:
-        req = Request(save_url, headers={"User-Agent": "todesk-nix-updater"})
-        with urlopen(req, timeout=120) as r:
-            final_url = r.url
-            if "web.archive.org" in final_url:
-                # Convert to if_ URL for raw content
-                final_url = re.sub(r"/web/(\d+)/", r"/web/\1if_/", final_url)
-                return final_url
-    except Exception as e:
-        print(f"  archival request failed: {e}", file=sys.stderr)
+    for domain in ("dl.todesk.com", "newdl.todesk.com"):
+        url = (
+            f"{CDX_API}?url={domain}/linux/todesk-v*-amd64.deb"
+            f"&matchType=prefix&output=json"
+            f"&fl=original,timestamp,statuscode,length"
+            f"&filter=statuscode:200"
+        )
+        body = fetch(url, timeout=60)
+        if body is None:
+            continue
+        rows = json.loads(body)
+        for row in rows[1:]:
+            original, timestamp, status, length = row
+            if int(length) < MIN_FILE_SIZE:
+                continue
+            m = ARCHIVE_VER_RE.search(original)
+            if not m:
+                continue
+            version = m.group(1)
+            archive_url = f"https://web.archive.org/web/{timestamp}if_/{original}"
 
+            if version not in results or int(length) > results[version]["size"]:
+                results[version] = {
+                    "url": archive_url,
+                    "size": int(length),
+                }
+
+    versions = sorted(results.keys(), key=version_tuple)
+    print(f"  found in archive: {', '.join(versions)}")
+    return results
+
+
+def archive_new_version(version):
+    """Request archive.org to save a new ToDesk deb."""
+    for domain in ("dl.todesk.com", "newdl.todesk.com"):
+        suffix = f"todesk-v{version}-amd64.deb"
+        original = f"https://{domain}/linux/{suffix}"
+        print(f"  requesting archive.org to save {suffix} ({domain}) ...")
+        save_url = ARCHIVE_SAVE + original
+        try:
+            req = Request(save_url, headers={"User-Agent": "todesk-nix-updater"})
+            with urlopen(req, timeout=180) as r:
+                final_url = r.url
+                content_length = int(r.headers.get("Content-Length", "0"))
+                if "web.archive.org" in final_url and content_length > MIN_FILE_SIZE:
+                    final_url = re.sub(r"/web/(\d+)/", r"/web/\1if_/", final_url)
+                    print(f"  archived: {final_url} ({content_length} bytes)")
+                    return final_url
+        except Exception as e:
+            print(f"  save failed for {fmt}: {e}", file=sys.stderr)
     return None
 
 
 def fetch_and_hash(url):
-    """Download the RPM and compute its SRI hash."""
-    print(f"  downloading {url} ...")
-    data = fetch(url, timeout=300)
-    if data is None or len(data) < 1_000_000:
+    """Download and compute SRI hash."""
+    print(f"  downloading ({url.split('/')[5]}) ...")
+    data = fetch(url, timeout=600)
+    if data is None or len(data) < MIN_FILE_SIZE:
+        print(f"  SKIP: too small or failed ({len(data) if data else 0} bytes)")
         return None
     sri = sha256_to_sri(data)
-    print(f"  hash: {sri} ({len(data)} bytes)")
+    print(f"  hash: {sri} ({len(data):,} bytes)")
     return sri
 
 
@@ -116,33 +144,48 @@ def main():
     existing = load_existing()
     existing_versions = set(existing.get("versions", {}).keys())
 
-    if len(sys.argv) > 1:
-        new_versions = [sys.argv[1]]
-        print(f"Using manually provided version: {new_versions[0]}")
+    if len(sys.argv) > 1 and sys.argv[1] == "--backfill":
+        print("=== Backfill mode: collecting all historical versions ===\n")
+        cdx_results = discover_from_cdx()
+        to_process = {
+            v: info for v, info in cdx_results.items()
+            if v not in existing_versions
+        }
+    elif len(sys.argv) > 1:
+        version = sys.argv[1]
+        print(f"Using manually provided version: {version}")
+        to_process = {version: None}
     else:
-        all_versions = discover_version()
-        new_versions = [v for v in all_versions if v not in existing_versions]
+        page_versions = discover_from_page()
+        cdx_results = discover_from_cdx()
+        all_known = set(page_versions) | set(cdx_results.keys())
+        to_process = {
+            v: cdx_results.get(v)
+            for v in all_known
+            if v not in existing_versions
+        }
 
-    if not new_versions:
+    if not to_process:
         print("--- up to date ---")
         return
 
-    print(f"New versions to process: {', '.join(new_versions)}")
+    print(f"\nVersions to process: {', '.join(sorted(to_process, key=version_tuple))}\n")
 
-    for version in new_versions:
-        print(f"\nProcessing v{version} ...")
-        url = archive_url_for(version)
-        if url is None:
-            print(f"  SKIP: could not get archive URL for v{version}")
-            continue
+    for version in sorted(to_process, key=version_tuple):
+        print(f"Processing v{version} ...")
+        info = to_process[version]
 
-        # Ensure if_ in URL for raw content
-        if "if_/" not in url:
-            url = re.sub(r"/web/(\d+)/", r"/web/\1if_/", url)
+        if info and "url" in info:
+            url = info["url"]
+        else:
+            url = archive_new_version(version)
+            if url is None:
+                print(f"  SKIP: could not archive v{version}\n")
+                continue
 
         sri = fetch_and_hash(url)
         if sri is None:
-            print(f"  SKIP: download/hash failed for v{version}")
+            print(f"  SKIP: download/hash failed for v{version}\n")
             continue
 
         existing.setdefault("versions", {})[version] = {
@@ -151,14 +194,14 @@ def main():
                 "hash": sri,
             }
         }
+        print()
 
-    # Recompute latest
     all_vers = list(existing.get("versions", {}).keys())
     if all_vers:
         existing["latest"] = max(all_vers, key=version_tuple)
 
     VERSIONS_FILE.write_text(json.dumps(existing, indent=2, sort_keys=True) + "\n")
-    print(f"\n--- done: {len(existing['versions'])} versions ---")
+    print(f"--- done: {len(existing['versions'])} versions ---")
 
 
 if __name__ == "__main__":

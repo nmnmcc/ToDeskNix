@@ -33,9 +33,9 @@
                 url = platInfo.url;
                 hash = platInfo.hash;
               };
-              nativeBuildInputs = [ pkgs.rpm pkgs.cpio ];
+              nativeBuildInputs = [ pkgs.dpkg ];
               unpackPhase = ''
-                rpm2cpio $src | cpio -idmv 2>/dev/null
+                dpkg -x $src .
               '';
               installPhase = ''
                 mkdir -p $out/{bin,lib,opt/todesk,share}
