@@ -89,6 +89,28 @@ NIXPKGS_ALLOW_UNFREE=1 nix build github:nmnmcc/ToDeskNix --impure
 这将创建 `todeskd` systemd 服务，并将 `todesk` 命令添加到
 `environment.systemPackages`。
 
+### 仅客户端模式（安全加固）
+
+防止本机被远程控制，同时保留控制其他机器的能力：
+
+```nix
+{
+  services.todesk = {
+    enable = true;
+    allowBeControlled = false;
+  };
+}
+```
+
+此选项会从包中移除 `ToDesk_Session` 二进制文件。Daemon 仍正常运行，你可以
+发起对外连接控制其他机器，但入站的控制会话会因为会话处理程序不存在而失败。
+
+也可以直接使用独立的 `todesk-client` 包：
+
+```sh
+NIXPKGS_ALLOW_UNFREE=1 nix run github:nmnmcc/ToDeskNix#todesk-client --impure
+```
+
 ## 使用 overlay
 
 ```nix

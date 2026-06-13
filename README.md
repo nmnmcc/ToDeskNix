@@ -95,6 +95,30 @@ service:
 This creates a `todeskd` systemd service and adds the `todesk` command
 to `environment.systemPackages`.
 
+### Client-only mode (security hardening)
+
+To prevent this machine from being remotely controlled while still
+allowing you to control other machines:
+
+```nix
+{
+  services.todesk = {
+    enable = true;
+    allowBeControlled = false;
+  };
+}
+```
+
+This strips the `ToDesk_Session` binary from the package. The daemon
+can still run and you can initiate outgoing connections, but incoming
+control sessions will fail because the session handler does not exist.
+
+A standalone `todesk-client` package is also available:
+
+```sh
+NIXPKGS_ALLOW_UNFREE=1 nix run github:nmnmcc/ToDeskNix#todesk-client --impure
+```
+
 ## Using the overlay
 
 ```nix

@@ -18,7 +18,8 @@
           (builtins.head vers)
           (builtins.tail vers);
 
-      mkTodesk = pkgs: version: info:
+      # clientOnly: strip ToDesk_Session to prevent incoming remote control
+      mkTodesk = pkgs: version: info: { clientOnly ? false }:
         let
           system = pkgs.stdenv.hostPlatform.system;
           platInfo = info.${system} or null;
@@ -49,6 +50,8 @@
                 mkdir -p $out/opt/todesk/{config,bin}
                 cp -r usr/share/* $out/share/ 2>/dev/null || true
                 cp -r etc $out/etc 2>/dev/null || true
+              '' + nixpkgs.lib.optionalString clientOnly ''
+                rm -f $out/bin/ToDesk_Session
               '';
             };
           in
@@ -125,7 +128,8 @@
           allVers = builtins.filter
             (ver: builtins.hasAttr system versions.versions.${ver})
             (builtins.attrNames versions.versions);
-          mk = ver: mkTodesk pkgs ver versions.versions.${ver};
+          mk = ver: mkTodesk pkgs ver versions.versions.${ver} {};
+          mkClient = ver: mkTodesk pkgs ver versions.versions.${ver} { clientOnly = true; };
 
           parts = builtins.listToAttrs (map (ver: {
             name = ver;
@@ -162,8 +166,13 @@
             then [{ name = "default"; value = mk (latestOf allVers); }]
             else [];
 
+          clientPair =
+            if allVers != []
+            then [{ name = "todesk-client"; value = mkClient (latestOf allVers); }]
+            else [];
+
         in
-        builtins.listToAttrs (exact ++ minorPairs ++ majorPairs ++ latestPair ++ defaultPair);
+        builtins.listToAttrs (exact ++ minorPairs ++ majorPairs ++ latestPair ++ defaultPair ++ clientPair);
 
     in
     {
@@ -178,14 +187,30 @@
       nixosModules.default = { config, lib, pkgs, ... }:
         let
           cfg = config.services.todesk;
-          todeskPkg = self.packages.${pkgs.stdenv.hostPlatform.system}.todesk;
+          system = pkgs.stdenv.hostPlatform.system;
+          latestVer = versions.latest;
+          latestInfo = versions.versions.${latestVer};
+          fullPkg = mkTodesk pkgs latestVer latestInfo {};
+          clientPkg = mkTodesk pkgs latestVer latestInfo { clientOnly = true; };
         in {
           options.services.todesk = {
             enable = lib.mkEnableOption "ToDesk remote desktop service";
             package = lib.mkOption {
               type = lib.types.package;
-              default = todeskPkg;
+              default = if cfg.allowBeControlled then fullPkg else clientPkg;
+              defaultText = lib.literalExpression "todesk or todesk-client depending on allowBeControlled";
               description = "The ToDesk package to use.";
+            };
+            allowBeControlled = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = ''
+                Whether to allow this machine to be remotely controlled via
+                ToDesk. When set to false, the ToDesk_Session binary is
+                stripped from the package, so the daemon can still run and
+                you can initiate outgoing connections to control other
+                machines, but incoming control sessions will fail.
+              '';
             };
           };
           config = lib.mkIf cfg.enable {
