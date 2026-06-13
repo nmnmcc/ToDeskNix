@@ -1,0 +1,11 @@
+{
+  "latest": "4.8.6.2",
+  "versions": {
+    "4.8.6.2": {
+      "x86_64-linux": {
+        "url": "https://web.archive.org/web/20260413043514if_/https://dl.todesk.com/linux/todesk-v4.8.6.2-x86_64.rpm",
+        "hash": "sha256-NqlFgRUIVkmPKIhl0K3VOxdEPi8AMIIJchM2foXTTwg="
+      }
+    }
+  }
+}
