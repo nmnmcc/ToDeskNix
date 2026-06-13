@@ -183,13 +183,14 @@ ToDesk is proprietary software. You must set `allowUnfree = true` in
 your Nix configuration, or use `NIXPKGS_ALLOW_UNFREE=1 --impure` when
 running Nix commands.
 
-The `todeskd` service requires `/var/lib/todesk` to exist. The NixOS
-module creates this directory automatically. If running manually, create
-it with:
+When using `nix run`, configuration state is ephemeral by default.
+To persist settings across runs, create `/var/lib/todesk`:
 
 ```sh
 sudo mkdir -p /var/lib/todesk
 ```
+
+The NixOS module creates this directory automatically.
 
 To see available packages:
 

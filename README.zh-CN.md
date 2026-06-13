@@ -169,12 +169,14 @@ archive.org，计算 SHA256 校验和，并将变更提交到 `versions.json`。
 ToDesk 是专有软件，需要在 Nix 配置中设置 `allowUnfree = true`，或在运行 Nix
 命令时使用 `NIXPKGS_ALLOW_UNFREE=1 --impure`。
 
-`todeskd` 服务需要 `/var/lib/todesk` 目录存在。NixOS 模块会自动创建该目录。
-如果手动运行，请先创建：
+使用 `nix run` 时，配置状态默认为临时的。如需跨次运行保持设置，请创建
+`/var/lib/todesk`：
 
 ```sh
 sudo mkdir -p /var/lib/todesk
 ```
+
+NixOS 模块会自动创建该目录。
 
 查看可用的包：
 

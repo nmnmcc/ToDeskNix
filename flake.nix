@@ -90,11 +90,18 @@
             ];
             extraBwrapArgs = [
               "--tmpfs /opt/todesk"
-              "--bind /var/lib/todesk /opt/todesk/config"
               "--bind ${todesk-unwrapped}/bin /opt/todesk/bin"
-              "--bind /var/lib/todesk /etc/todesk"
+              "--tmpfs /etc/todesk"
             ];
             runScript = pkgs.writeShellScript "todesk.sh" ''
+              mkdir -p /opt/todesk/config
+              # load persistent state if available
+              if [ -d /var/lib/todesk ] && [ "$(ls -A /var/lib/todesk 2>/dev/null)" ]; then
+                cp -a /var/lib/todesk/. /opt/todesk/config/ 2>/dev/null || true
+                cp -a /var/lib/todesk/. /etc/todesk/ 2>/dev/null || true
+              fi
+              _save() { cp -a /opt/todesk/config/. /var/lib/todesk/ 2>/dev/null || true; }
+              trap _save EXIT
               export LIBVA_DRIVER_NAME=iHD
               export LIBVA_DRIVERS_PATH=${todesk-unwrapped}/bin
               if [ "''${1}" = 'service' ]; then
